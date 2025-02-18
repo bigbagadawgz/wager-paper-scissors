@@ -10,23 +10,20 @@ const WalletButton = () => {
   const [balance, setBalance] = useState<number | null>(null);
 
   useEffect(() => {
-    if ('phantom' in window) {
-      const phantom = (window as any).phantom?.solana;
-      if (phantom?.isPhantom) {
-        setWallet(phantom);
-        // Check if we're already connected
-        phantom.connect({ onlyIfTrusted: true })
-          .then((response: any) => {
-            console.log('Auto-connect successful:', response);
-            setConnected(true);
-            setPublicKey(response.publicKey.toString());
-            updateBalance(response.publicKey);
-          })
-          .catch(() => {
-            console.log('Not already connected');
-          });
+    const getProvider = () => {
+      if ('phantom' in window) {
+        const provider = (window as any).phantom?.solana;
+    
+        if (provider?.isPhantom) {
+          return provider;
+        }
       }
-    }
+    
+      window.open('https://phantom.app/', '_blank');
+    };
+
+    const provider = getProvider();
+    if (provider) setWallet(provider);
   }, []);
 
   const updateBalance = async (publicKey: any) => {
@@ -50,18 +47,25 @@ const WalletButton = () => {
     try {
       if (wallet) {
         console.log('Attempting to connect wallet...');
-        const response = await wallet.connect();
-        console.log('Wallet connected:', response);
-        setConnected(true);
-        setPublicKey(response.publicKey.toString());
-        await updateBalance(response.publicKey);
         
-        toast({
-          title: "Wallet Connected",
-          description: "Successfully connected to Phantom wallet",
+        // The recommended way to connect
+        const resp = await wallet.connect();
+        console.log('Wallet connected:', resp);
+        
+        const publicKey = resp.publicKey;
+        setConnected(true);
+        setPublicKey(publicKey.toString());
+        await updateBalance(publicKey);
+        
+        // Setup connection change listener
+        wallet.on('connect', (publicKey: any) => {
+          console.log('Connected to wallet:', publicKey.toString());
+          setConnected(true);
+          setPublicKey(publicKey.toString());
+          updateBalance(publicKey);
         });
 
-        // Listen for wallet connection changes
+        // Setup disconnect listener
         wallet.on('disconnect', () => {
           console.log('Wallet disconnected');
           setConnected(false);
@@ -72,6 +76,11 @@ const WalletButton = () => {
             title: "Wallet Disconnected",
             description: "Phantom wallet has been disconnected",
           });
+        });
+        
+        toast({
+          title: "Wallet Connected",
+          description: "Successfully connected to Phantom wallet",
         });
       }
     } catch (error) {

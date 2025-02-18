@@ -6,6 +6,7 @@ import WalletButton from './WalletButton';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { supabase } from "@/integrations/supabase/client";
 
 const GameRoom = () => {
   const [playerChoice, setPlayerChoice] = useState<string | null>(null);
@@ -13,12 +14,12 @@ const GameRoom = () => {
   const [roomCode, setRoomCode] = useState<string>('');
   const [isHost, setIsHost] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
+  const [depositSubmitted, setDepositSubmitted] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    // Check if we're joining a room
     const params = new URLSearchParams(location.search);
     const code = params.get('room');
     if (code) {
@@ -27,7 +28,54 @@ const GameRoom = () => {
     }
   }, [location]);
 
-  const createRoom = () => {
+  const handleDeposit = async (publicKey: string) => {
+    try {
+      const response = await fetch('/api/escrow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: isHost ? 'createEscrow' : 'joinEscrow',
+          roomCode,
+          betAmount,
+          publicKey,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+
+      // Send transaction to wallet for signing
+      const transaction = (window as any).solanaWeb3.Transaction.from(
+        data.transaction.data
+      );
+      
+      const connection = new (window as any).solanaWeb3.Connection(
+        "https://api.devnet.solana.com",
+        "confirmed"
+      );
+
+      const signedTx = await (window as any).phantom?.solana.signAndSendTransaction(
+        transaction
+      );
+
+      await connection.confirmTransaction(signedTx.signature);
+      
+      setDepositSubmitted(true);
+      toast({
+        title: "Deposit Successful",
+        description: "Your bet has been placed in escrow",
+      });
+    } catch (error) {
+      console.error('Deposit error:', error);
+      toast({
+        variant: "destructive",
+        title: "Deposit Failed",
+        description: error.message,
+      });
+    }
+  };
+
+  const createRoom = async (publicKey: string) => {
     if (!betAmount) {
       toast({
         variant: "destructive",
@@ -36,18 +84,41 @@ const GameRoom = () => {
       });
       return;
     }
+
     const newRoomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    
+    const { error } = await supabase
+      .from('game_matches')
+      .insert({
+        room_code: newRoomCode,
+        bet_amount: betAmount,
+        host_pubkey: publicKey,
+        status: 'pending'
+      });
+
+    if (error) {
+      toast({
+        variant: "destructive",
+        title: "Room Creation Failed",
+        description: error.message,
+      });
+      return;
+    }
+
     setRoomCode(newRoomCode);
     setIsHost(true);
     setGameStarted(true);
     navigate(`/?room=${newRoomCode}`);
+    
+    await handleDeposit(publicKey);
+
     toast({
       title: "Room Created",
       description: `Share this code with your opponent: ${newRoomCode}`,
     });
   };
 
-  const joinRoom = () => {
+  const joinRoom = async (publicKey: string) => {
     if (!roomCode) {
       toast({
         variant: "destructive",
@@ -56,12 +127,48 @@ const GameRoom = () => {
       });
       return;
     }
+
+    const { data: match, error } = await supabase
+      .from('game_matches')
+      .select('*')
+      .eq('room_code', roomCode)
+      .single();
+
+    if (error || !match) {
+      toast({
+        variant: "destructive",
+        title: "Room Not Found",
+        description: "Please check the room code and try again",
+      });
+      return;
+    }
+
+    setBetAmount(match.bet_amount);
     navigate(`/?room=${roomCode}`);
     setGameStarted(true);
+    
+    await handleDeposit(publicKey);
   };
 
-  const handleChoice = (choice: string) => {
+  const handleChoice = async (choice: string) => {
     setPlayerChoice(choice);
+    
+    const { error } = await supabase
+      .from('game_matches')
+      .update({
+        [isHost ? 'host_choice' : 'opponent_choice']: choice
+      })
+      .eq('room_code', roomCode);
+
+    if (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed to Submit Choice",
+        description: error.message,
+      });
+      return;
+    }
+
     toast({
       title: "Choice Selected",
       description: `You chose ${choice}`,
@@ -73,7 +180,59 @@ const GameRoom = () => {
     setGameStarted(false);
     setPlayerChoice(null);
     setIsHost(false);
+    setDepositSubmitted(false);
     navigate('/');
+  };
+
+  // Effect to watch for game completion
+  useEffect(() => {
+    if (!roomCode) return;
+
+    const subscription = supabase
+      .from('game_matches')
+      .on('UPDATE', (payload) => {
+        const match = payload.new;
+        
+        // Check if both players have made their choices
+        if (match.host_choice && match.opponent_choice) {
+          // Determine winner
+          const result = determineWinner(match.host_choice, match.opponent_choice);
+          if (result === 'tie') {
+            toast({
+              title: "It's a Tie!",
+              description: "The game ended in a draw",
+            });
+          } else {
+            const isWinner = 
+              (isHost && result === 'host') || 
+              (!isHost && result === 'opponent');
+            
+            toast({
+              title: isWinner ? "You Won!" : "You Lost!",
+              description: isWinner 
+                ? "Congratulations! You can now claim your winnings." 
+                : "Better luck next time!",
+            });
+          }
+        }
+      })
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [roomCode, isHost]);
+
+  const determineWinner = (hostChoice: string, opponentChoice: string) => {
+    if (hostChoice === opponentChoice) return 'tie';
+    if (
+      (hostChoice === 'rock' && opponentChoice === 'scissors') ||
+      (hostChoice === 'paper' && opponentChoice === 'rock') ||
+      (hostChoice === 'scissors' && opponentChoice === 'paper')
+    ) {
+      return 'host';
+    }
+    return 'opponent';
   };
 
   return (
@@ -124,20 +283,31 @@ const GameRoom = () => {
                   <p className="text-sm text-muted-foreground">
                     {isHost ? 'Waiting for opponent to join...' : 'Game joined!'}
                   </p>
+                  <p className="text-sm text-muted-foreground">
+                    Bet Amount: {betAmount} SOL
+                  </p>
                 </div>
                 <Button variant="outline" onClick={leaveRoom}>Leave Room</Button>
               </div>
 
-              <div className="grid grid-cols-3 gap-6">
-                {['rock', 'paper', 'scissors'].map((choice) => (
-                  <GameChoice
-                    key={choice}
-                    choice={choice as 'rock' | 'paper' | 'scissors'}
-                    onSelect={handleChoice}
-                    disabled={!betAmount}
-                  />
-                ))}
-              </div>
+              {depositSubmitted ? (
+                <div className="grid grid-cols-3 gap-6">
+                  {['rock', 'paper', 'scissors'].map((choice) => (
+                    <GameChoice
+                      key={choice}
+                      choice={choice as 'rock' | 'paper' | 'scissors'}
+                      onSelect={handleChoice}
+                      disabled={!betAmount}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center">
+                  <p className="text-lg mb-4">
+                    Please deposit {betAmount} SOL to start playing
+                  </p>
+                </div>
+              )}
 
               {playerChoice && (
                 <div className="mt-8 text-center">

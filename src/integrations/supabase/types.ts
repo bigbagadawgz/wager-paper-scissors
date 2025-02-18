@@ -9,7 +9,54 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      game_matches: {
+        Row: {
+          bet_amount: number
+          created_at: string | null
+          escrow_address: string | null
+          host_choice: string | null
+          host_deposited: boolean | null
+          host_pubkey: string
+          id: string
+          opponent_choice: string | null
+          opponent_deposited: boolean | null
+          opponent_pubkey: string | null
+          room_code: string
+          status: string | null
+          winner_pubkey: string | null
+        }
+        Insert: {
+          bet_amount: number
+          created_at?: string | null
+          escrow_address?: string | null
+          host_choice?: string | null
+          host_deposited?: boolean | null
+          host_pubkey: string
+          id?: string
+          opponent_choice?: string | null
+          opponent_deposited?: boolean | null
+          opponent_pubkey?: string | null
+          room_code: string
+          status?: string | null
+          winner_pubkey?: string | null
+        }
+        Update: {
+          bet_amount?: number
+          created_at?: string | null
+          escrow_address?: string | null
+          host_choice?: string | null
+          host_deposited?: boolean | null
+          host_pubkey?: string
+          id?: string
+          opponent_choice?: string | null
+          opponent_deposited?: boolean | null
+          opponent_pubkey?: string | null
+          room_code?: string
+          status?: string | null
+          winner_pubkey?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

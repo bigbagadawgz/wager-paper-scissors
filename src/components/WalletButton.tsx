@@ -17,12 +17,13 @@ const WalletButton = () => {
         // Check if we're already connected
         phantom.connect({ onlyIfTrusted: true })
           .then((response: any) => {
+            console.log('Auto-connect successful:', response);
             setConnected(true);
             setPublicKey(response.publicKey.toString());
             updateBalance(response.publicKey);
           })
           .catch(() => {
-            // Not already connected, which is fine
+            console.log('Not already connected');
           });
       }
     }
@@ -30,12 +31,16 @@ const WalletButton = () => {
 
   const updateBalance = async (publicKey: any) => {
     try {
+      console.log('Fetching balance for public key:', publicKey.toString());
       const connection = new (window as any).solanaWeb3.Connection(
         "https://api.devnet.solana.com",
         "confirmed"
       );
       const balance = await connection.getBalance(publicKey);
-      setBalance(balance / 1000000000); // Convert lamports to SOL
+      console.log('Retrieved balance:', balance);
+      const solBalance = balance / 1000000000; // Convert lamports to SOL
+      console.log('Balance in SOL:', solBalance);
+      setBalance(solBalance);
     } catch (error) {
       console.error('Error fetching balance:', error);
     }
@@ -44,7 +49,9 @@ const WalletButton = () => {
   const connect = useCallback(async () => {
     try {
       if (wallet) {
+        console.log('Attempting to connect wallet...');
         const response = await wallet.connect();
+        console.log('Wallet connected:', response);
         setConnected(true);
         setPublicKey(response.publicKey.toString());
         await updateBalance(response.publicKey);
@@ -56,6 +63,7 @@ const WalletButton = () => {
 
         // Listen for wallet connection changes
         wallet.on('disconnect', () => {
+          console.log('Wallet disconnected');
           setConnected(false);
           setPublicKey(null);
           setBalance(null);
@@ -67,6 +75,7 @@ const WalletButton = () => {
         });
       }
     } catch (error) {
+      console.error('Connection error:', error);
       toast({
         variant: "destructive",
         title: "Connection Failed",

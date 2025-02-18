@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import GameChoice from './GameChoice';
@@ -44,7 +43,6 @@ const GameRoom = () => {
       const data = await response.json();
       if (data.error) throw new Error(data.error);
 
-      // Send transaction to wallet for signing
       const transaction = (window as any).solanaWeb3.Transaction.from(
         data.transaction.data
       );
@@ -75,7 +73,7 @@ const GameRoom = () => {
     }
   };
 
-  const createRoom = async (publicKey: string) => {
+  const createRoom = async () => {
     if (!betAmount) {
       toast({
         variant: "destructive",
@@ -85,6 +83,17 @@ const GameRoom = () => {
       return;
     }
 
+    const provider = (window as any).phantom?.solana;
+    if (!provider?.isConnected) {
+      toast({
+        variant: "destructive",
+        title: "Connect Wallet",
+        description: "Please connect your wallet first",
+      });
+      return;
+    }
+
+    const publicKey = provider.publicKey.toString();
     const newRoomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     
     const { error } = await supabase
@@ -118,7 +127,7 @@ const GameRoom = () => {
     });
   };
 
-  const joinRoom = async (publicKey: string) => {
+  const joinRoom = async () => {
     if (!roomCode) {
       toast({
         variant: "destructive",
@@ -127,6 +136,18 @@ const GameRoom = () => {
       });
       return;
     }
+
+    const provider = (window as any).phantom?.solana;
+    if (!provider?.isConnected) {
+      toast({
+        variant: "destructive",
+        title: "Connect Wallet",
+        description: "Please connect your wallet first",
+      });
+      return;
+    }
+
+    const publicKey = provider.publicKey.toString();
 
     const { data: match, error } = await supabase
       .from('game_matches')
@@ -184,42 +205,48 @@ const GameRoom = () => {
     navigate('/');
   };
 
-  // Effect to watch for game completion
   useEffect(() => {
     if (!roomCode) return;
 
-    const subscription = supabase
-      .from('game_matches')
-      .on('UPDATE', (payload) => {
-        const match = payload.new;
-        
-        // Check if both players have made their choices
-        if (match.host_choice && match.opponent_choice) {
-          // Determine winner
-          const result = determineWinner(match.host_choice, match.opponent_choice);
-          if (result === 'tie') {
-            toast({
-              title: "It's a Tie!",
-              description: "The game ended in a draw",
-            });
-          } else {
-            const isWinner = 
-              (isHost && result === 'host') || 
-              (!isHost && result === 'opponent');
-            
-            toast({
-              title: isWinner ? "You Won!" : "You Lost!",
-              description: isWinner 
-                ? "Congratulations! You can now claim your winnings." 
-                : "Better luck next time!",
-            });
+    const channel = supabase
+      .channel('game_updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'game_matches',
+          filter: `room_code=eq.${roomCode}`
+        },
+        (payload) => {
+          const match = payload.new;
+          
+          if (match.host_choice && match.opponent_choice) {
+            const result = determineWinner(match.host_choice, match.opponent_choice);
+            if (result === 'tie') {
+              toast({
+                title: "It's a Tie!",
+                description: "The game ended in a draw",
+              });
+            } else {
+              const isWinner = 
+                (isHost && result === 'host') || 
+                (!isHost && result === 'opponent');
+              
+              toast({
+                title: isWinner ? "You Won!" : "You Lost!",
+                description: isWinner 
+                  ? "Congratulations! You can now claim your winnings." 
+                  : "Better luck next time!",
+              });
+            }
           }
         }
-      })
+      )
       .subscribe();
 
     return () => {
-      subscription.unsubscribe();
+      supabase.removeChannel(channel);
     };
   }, [roomCode, isHost]);
 

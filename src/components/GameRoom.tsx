@@ -1,31 +1,22 @@
+
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import GameChoice from './GameChoice';
 import WalletButton from './WalletButton';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from "@/integrations/supabase/client";
 
 const GameRoom = () => {
   const [playerChoice, setPlayerChoice] = useState<string | null>(null);
   const [betAmount, setBetAmount] = useState<number>(0);
-  const [roomCode, setRoomCode] = useState<string>('');
-  const [isHost, setIsHost] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
   const [depositSubmitted, setDepositSubmitted] = useState(false);
+  const [isHost, setIsHost] = useState(false);
+  const [roomCode, setRoomCode] = useState<string>('');
   const { toast } = useToast();
   const navigate = useNavigate();
-  const location = useLocation();
-
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const code = params.get('room');
-    if (code) {
-      setRoomCode(code);
-      setGameStarted(true);
-    }
-  }, [location]);
 
   const handleDeposit = async (publicKey: string) => {
     try {
@@ -73,7 +64,7 @@ const GameRoom = () => {
     }
   };
 
-  const createRoom = async () => {
+  const findMatch = async () => {
     if (!betAmount) {
       toast({
         variant: "destructive",
@@ -94,81 +85,61 @@ const GameRoom = () => {
     }
 
     const publicKey = provider.publicKey.toString();
-    const newRoomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    
-    const { error } = await supabase
-      .from('game_matches')
-      .insert({
-        room_code: newRoomCode,
-        bet_amount: betAmount,
-        host_pubkey: publicKey,
-        status: 'pending'
-      });
 
-    if (error) {
-      toast({
-        variant: "destructive",
-        title: "Room Creation Failed",
-        description: error.message,
-      });
-      return;
-    }
-
-    setRoomCode(newRoomCode);
-    setIsHost(true);
-    setGameStarted(true);
-    navigate(`/?room=${newRoomCode}`);
-    
-    await handleDeposit(publicKey);
-
-    toast({
-      title: "Room Created",
-      description: `Share this code with your opponent: ${newRoomCode}`,
-    });
-  };
-
-  const joinRoom = async () => {
-    if (!roomCode) {
-      toast({
-        variant: "destructive",
-        title: "Enter Room Code",
-        description: "Please enter a room code to join",
-      });
-      return;
-    }
-
-    const provider = (window as any).phantom?.solana;
-    if (!provider?.isConnected) {
-      toast({
-        variant: "destructive",
-        title: "Connect Wallet",
-        description: "Please connect your wallet first",
-      });
-      return;
-    }
-
-    const publicKey = provider.publicKey.toString();
-
-    const { data: match, error } = await supabase
+    // First, check for available matches with the same bet amount
+    const { data: existingMatch } = await supabase
       .from('game_matches')
       .select('*')
-      .eq('room_code', roomCode)
+      .eq('bet_amount', betAmount)
+      .eq('status', 'pending')
+      .is('opponent_pubkey', null)
+      .neq('host_pubkey', publicKey)
+      .limit(1)
       .single();
 
-    if (error || !match) {
+    if (existingMatch) {
+      // Join existing match
+      setRoomCode(existingMatch.room_code);
+      setGameStarted(true);
+      setIsHost(false);
+      await handleDeposit(publicKey);
+      
       toast({
-        variant: "destructive",
-        title: "Room Not Found",
-        description: "Please check the room code and try again",
+        title: "Match Found!",
+        description: "You've been matched with an opponent",
       });
-      return;
-    }
+    } else {
+      // Create new match
+      const newRoomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      
+      const { error } = await supabase
+        .from('game_matches')
+        .insert({
+          room_code: newRoomCode,
+          bet_amount: betAmount,
+          host_pubkey: publicKey,
+          status: 'pending'
+        });
 
-    setBetAmount(match.bet_amount);
-    navigate(`/?room=${roomCode}`);
-    setGameStarted(true);
-    
-    await handleDeposit(publicKey);
+      if (error) {
+        toast({
+          variant: "destructive",
+          title: "Failed to Create Match",
+          description: error.message,
+        });
+        return;
+      }
+
+      setRoomCode(newRoomCode);
+      setIsHost(true);
+      setGameStarted(true);
+      await handleDeposit(publicKey);
+
+      toast({
+        title: "Waiting for Opponent",
+        description: "Looking for a player with the same bet amount...",
+      });
+    }
   };
 
   const handleChoice = async (choice: string) => {
@@ -196,12 +167,12 @@ const GameRoom = () => {
     });
   };
 
-  const leaveRoom = () => {
-    setRoomCode('');
+  const leaveGame = () => {
     setGameStarted(false);
     setPlayerChoice(null);
     setIsHost(false);
     setDepositSubmitted(false);
+    setRoomCode('');
     navigate('/');
   };
 
@@ -282,31 +253,18 @@ const GameRoom = () => {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-4">
-                <Button 
-                  onClick={createRoom}
-                  className="w-full"
-                  disabled={!betAmount}
-                >
-                  Create New Game
-                </Button>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Enter room code"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-                    value={roomCode}
-                    onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                  />
-                  <Button onClick={joinRoom}>Join Game</Button>
-                </div>
-              </div>
+              <Button 
+                onClick={findMatch}
+                className="w-full"
+                disabled={!betAmount}
+              >
+                Find Match
+              </Button>
             </div>
           ) : (
             <>
               <div className="mb-6 flex justify-between items-center">
                 <div>
-                  <p className="text-lg">Room Code: {roomCode}</p>
                   <p className="text-sm text-muted-foreground">
                     {isHost ? 'Waiting for opponent to join...' : 'Game joined!'}
                   </p>
@@ -314,7 +272,7 @@ const GameRoom = () => {
                     Bet Amount: {betAmount} SOL
                   </p>
                 </div>
-                <Button variant="outline" onClick={leaveRoom}>Leave Room</Button>
+                <Button variant="outline" onClick={leaveGame}>Leave Game</Button>
               </div>
 
               {depositSubmitted ? (

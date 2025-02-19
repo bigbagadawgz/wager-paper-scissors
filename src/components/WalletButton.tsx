@@ -4,66 +4,29 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 
 const WalletButton = () => {
-  const [wallet, setWallet] = useState<Window['phantom']['solana']>(null);
+  const [provider, setProvider] = useState<Window['phantom']['solana']>(null);
   const [connected, setConnected] = useState(false);
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
+  // Function to detect if Phantom is installed
+  const getProvider = () => {
+    if ('phantom' in window) {
       const provider = window.phantom?.solana;
 
       if (provider?.isPhantom) {
-        setWallet(provider);
-
-        // Check if already connected
-        if (provider.isConnected) {
-          const publicKey = provider.publicKey;
-          setConnected(true);
-          setPublicKey(publicKey.toString());
-          updateBalance(provider);
-        }
-
-        // Listen for state changes
-        provider.on("connect", (publicKey: any) => {
-          setConnected(true);
-          setPublicKey(publicKey.toString());
-          updateBalance(provider);
-        });
-
-        provider.on("disconnect", () => {
-          setConnected(false);
-          setPublicKey(null);
-          setBalance(null);
-          toast({
-            variant: "destructive",
-            title: "Wallet Disconnected",
-            description: "Phantom wallet has been disconnected",
-          });
-        });
-
-        provider.on("accountChanged", (publicKey: any) => {
-          if (publicKey) {
-            console.log("Switched account to:", publicKey.toString());
-            setPublicKey(publicKey.toString());
-            updateBalance(provider);
-          }
-        });
+        return provider;
       }
     }
 
-    return () => {
-      if (wallet) {
-        wallet.disconnect();
-      }
-    };
-  }, []);
+    window.open('https://phantom.app/', '_blank');
+  };
 
-  const updateBalance = async (provider: Window['phantom']['solana']) => {
+  // Handle balance updates
+  const updateBalance = async () => {
     try {
-      if (!provider?.publicKey) return;
+      if (!provider || !provider.publicKey) return;
 
-      // Get balance directly from Phantom provider
       const balance = await provider.request({
         method: "getBalance",
         params: {
@@ -71,44 +34,80 @@ const WalletButton = () => {
         }
       });
 
-      const solBalance = balance.value / 1000000000; // Convert lamports to SOL
-      console.log('Current balance:', solBalance);
-      setBalance(solBalance);
-
-      // Set up real-time updates
-      provider.on("accountChanged", async () => {
-        const newBalance = await provider.request({
-          method: "getBalance",
-          params: {
-            commitment: "processed"
-          }
-        });
-        const newSolBalance = newBalance.value / 1000000000;
-        console.log('Balance updated:', newSolBalance);
-        setBalance(newSolBalance);
-      });
-
+      if (balance?.value) {
+        const solBalance = balance.value / 1000000000; // Convert lamports to SOL
+        console.log('Current balance:', solBalance);
+        setBalance(solBalance);
+      }
     } catch (error) {
       console.error('Error fetching balance:', error);
       setBalance(null);
     }
   };
 
+  // Handle account changes
+  const handleAccountChanged = (newPublicKey: any) => {
+    console.log('Account changed:', newPublicKey?.toString());
+    setPublicKey(newPublicKey ? newPublicKey.toString() : null);
+    updateBalance();
+  };
+
+  // Handle connection changes
+  const handleConnect = (publicKey: any) => {
+    console.log('Connected:', publicKey.toString());
+    setConnected(true);
+    setPublicKey(publicKey.toString());
+    updateBalance();
+  };
+
+  // Handle disconnection
+  const handleDisconnect = () => {
+    console.log('Disconnected');
+    setConnected(false);
+    setPublicKey(null);
+    setBalance(null);
+    toast({
+      variant: "destructive",
+      title: "Wallet Disconnected",
+      description: "Phantom wallet has been disconnected",
+    });
+  };
+
+  // Initialize provider
+  useEffect(() => {
+    const provider = getProvider();
+    if (provider) {
+      setProvider(provider);
+
+      // Check if already connected
+      if (provider.isConnected && provider.publicKey) {
+        setConnected(true);
+        setPublicKey(provider.publicKey.toString());
+        updateBalance();
+      }
+
+      // Add event listeners
+      provider.on("connect", handleConnect);
+      provider.on("disconnect", handleDisconnect);
+      provider.on("accountChanged", handleAccountChanged);
+
+      // Cleanup
+      return () => {
+        provider.removeAllListeners();
+      };
+    }
+  }, []);
+
+  // Connect handler
   const connect = useCallback(async () => {
     try {
-      if (wallet) {
-        const response = await wallet.connect();
-        console.log('Wallet connected:', response.publicKey.toString());
-        
-        setConnected(true);
-        setPublicKey(response.publicKey.toString());
-        await updateBalance(wallet);
-        
-        toast({
-          title: "Wallet Connected",
-          description: "Successfully connected to Phantom wallet",
-        });
-      }
+      if (!provider) return;
+
+      await provider.connect();
+      toast({
+        title: "Wallet Connected",
+        description: "Successfully connected to Phantom wallet",
+      });
     } catch (error) {
       console.error('Connection error:', error);
       toast({
@@ -117,9 +116,19 @@ const WalletButton = () => {
         description: "Failed to connect to Phantom wallet",
       });
     }
-  }, [wallet]);
+  }, [provider]);
 
-  if (!wallet) {
+  // Disconnect handler
+  const disconnect = useCallback(async () => {
+    try {
+      if (!provider) return;
+      await provider.disconnect();
+    } catch (error) {
+      console.error('Disconnection error:', error);
+    }
+  }, [provider]);
+
+  if (!provider) {
     return (
       <Button 
         variant="outline" 
@@ -138,7 +147,7 @@ const WalletButton = () => {
         </p>
       )}
       <Button 
-        onClick={connected ? () => wallet.disconnect() : connect}
+        onClick={connected ? disconnect : connect}
         className="bg-primary hover:bg-primary/90 text-primary-foreground"
       >
         {connected ? 'Disconnect' : 'Connect Wallet'}

@@ -26,16 +26,17 @@ const WalletButton = () => {
   // Handle balance updates
   const updateBalance = async () => {
     try {
-      if (!publicKey) {
+      if (!provider || !provider.publicKey) {
         console.log('No public key available for balance update');
         return;
       }
 
-      console.log('Fetching SOL balance for address:', publicKey);
+      const currentPublicKey = provider.publicKey.toString();
+      console.log('Fetching SOL balance for address:', currentPublicKey);
       
       // Create connection to Solana devnet
       const connection = new Connection(clusterApiUrl('devnet'));
-      const pubKey = new PublicKey(publicKey);
+      const pubKey = new PublicKey(currentPublicKey);
       
       // Get balance directly using web3.js
       const rawBalance = await connection.getBalance(pubKey);
@@ -70,7 +71,7 @@ const WalletButton = () => {
     console.log('Connected:', publicKey.toString());
     setConnected(true);
     setPublicKey(publicKey.toString());
-    updateBalance();
+    setTimeout(updateBalance, 500); // Add a small delay to ensure provider is ready
   }, []);
 
   // Handle disconnection

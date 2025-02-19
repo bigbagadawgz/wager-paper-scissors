@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { Connection, PublicKey, LAMPORTS_PER_SOL, clusterApiUrl } from '@solana/web3.js';
 
+const SOLANA_NETWORK = 'mainnet-beta';
+
 const WalletButton = () => {
   const [provider, setProvider] = useState<Window['phantom']['solana']>(null);
   const [connected, setConnected] = useState(false);
@@ -26,21 +28,20 @@ const WalletButton = () => {
   // Handle balance updates
   const updateBalance = async () => {
     try {
-      if (!provider || !provider.publicKey) {
+      if (!publicKey) {
         console.log('No public key available for balance update');
         return;
       }
 
-      const currentPublicKey = provider.publicKey.toString();
-      console.log('Fetching SOL balance for address:', currentPublicKey);
+      console.log('Fetching SOL balance for address:', publicKey);
       
-      // Create connection to Solana devnet
-      const connection = new Connection(clusterApiUrl('devnet'));
-      const pubKey = new PublicKey(currentPublicKey);
+      // Create connection to Solana mainnet
+      const connection = new Connection(clusterApiUrl(SOLANA_NETWORK));
+      const pubKey = new PublicKey(publicKey);
       
-      // Get balance directly using web3.js
-      const rawBalance = await connection.getBalance(pubKey);
-      const solBalance = rawBalance / LAMPORTS_PER_SOL;
+      // Get balance using getBalance method
+      const balance = await connection.getBalance(pubKey);
+      const solBalance = balance / LAMPORTS_PER_SOL;
       
       console.log('Balance in SOL:', solBalance);
       setBalance(solBalance);
@@ -62,16 +63,25 @@ const WalletButton = () => {
   // Handle account changes
   const handleAccountChanged = useCallback((newPublicKey: any) => {
     console.log('Account changed:', newPublicKey?.toString());
-    setPublicKey(newPublicKey ? newPublicKey.toString() : null);
-    updateBalance();
+    if (newPublicKey) {
+      const newPubKey = newPublicKey.toString();
+      setPublicKey(newPubKey);
+      // Trigger balance update after public key is set
+      setTimeout(() => updateBalance(), 100);
+    } else {
+      setPublicKey(null);
+      setBalance(null);
+    }
   }, []);
 
   // Handle connection changes
-  const handleConnect = useCallback((publicKey: any) => {
-    console.log('Connected:', publicKey.toString());
+  const handleConnect = useCallback(async (connectedPublicKey: any) => {
+    console.log('Connected:', connectedPublicKey.toString());
+    const pubKey = connectedPublicKey.toString();
     setConnected(true);
-    setPublicKey(publicKey.toString());
-    setTimeout(updateBalance, 500); // Add a small delay to ensure provider is ready
+    setPublicKey(pubKey);
+    // Trigger balance update after connection
+    setTimeout(() => updateBalance(), 100);
   }, []);
 
   // Handle disconnection
@@ -96,10 +106,12 @@ const WalletButton = () => {
 
       // Check if already connected
       if (provider.isConnected && provider.publicKey) {
-        console.log('Wallet already connected:', provider.publicKey.toString());
+        const pubKey = provider.publicKey.toString();
+        console.log('Wallet already connected:', pubKey);
         setConnected(true);
-        setPublicKey(provider.publicKey.toString());
-        updateBalance();
+        setPublicKey(pubKey);
+        // Initial balance check
+        setTimeout(() => updateBalance(), 100);
       }
 
       // Add event listeners
@@ -123,7 +135,7 @@ const WalletButton = () => {
       }
 
       console.log('Attempting to connect...');
-      await provider.connect();
+      const { publicKey } = await provider.connect();
       toast({
         title: "Wallet Connected",
         description: "Successfully connected to Phantom wallet",

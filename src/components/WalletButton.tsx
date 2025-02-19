@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
-import { LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Connection, PublicKey, LAMPORTS_PER_SOL, clusterApiUrl } from '@solana/web3.js';
 
 const WalletButton = () => {
   const [provider, setProvider] = useState<Window['phantom']['solana']>(null);
@@ -26,38 +26,27 @@ const WalletButton = () => {
   // Handle balance updates
   const updateBalance = async () => {
     try {
-      if (!provider || !provider.publicKey) {
-        console.log('No provider or public key available for balance update');
+      if (!publicKey) {
+        console.log('No public key available for balance update');
         return;
       }
 
-      console.log('Fetching SOL balance for address:', provider.publicKey.toString());
-
-      // Using Phantom's request method to get Solana balance
-      const result = await provider.request({
-        method: 'eth_getBalance',
-        params: [provider.publicKey.toString()]
+      console.log('Fetching SOL balance for address:', publicKey);
+      
+      // Create connection to Solana devnet
+      const connection = new Connection(clusterApiUrl('devnet'));
+      const pubKey = new PublicKey(publicKey);
+      
+      // Get balance directly using web3.js
+      const rawBalance = await connection.getBalance(pubKey);
+      const solBalance = rawBalance / LAMPORTS_PER_SOL;
+      
+      console.log('Balance in SOL:', solBalance);
+      setBalance(solBalance);
+      toast({
+        title: "Balance Updated",
+        description: `Current balance: ${solBalance.toFixed(4)} SOL`,
       });
-
-      console.log('Raw balance response:', result);
-
-      if (result) {
-        const solBalance = parseInt(result, 16) / LAMPORTS_PER_SOL;
-        console.log('Balance in SOL:', solBalance);
-        setBalance(solBalance);
-        toast({
-          title: "Balance Updated",
-          description: `Current balance: ${solBalance.toFixed(4)} SOL`,
-        });
-      } else {
-        console.log('Invalid balance response:', result);
-        setBalance(null);
-        toast({
-          variant: "destructive",
-          title: "Balance Error",
-          description: "Invalid balance response format",
-        });
-      }
     } catch (error) {
       console.error('Error fetching balance:', error);
       setBalance(null);
@@ -134,7 +123,6 @@ const WalletButton = () => {
 
       console.log('Attempting to connect...');
       await provider.connect();
-      updateBalance(); // Add explicit balance update after connection
       toast({
         title: "Wallet Connected",
         description: "Successfully connected to Phantom wallet",

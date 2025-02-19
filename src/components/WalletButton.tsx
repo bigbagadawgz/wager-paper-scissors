@@ -1,7 +1,7 @@
-
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
+import { Connection, LAMPORTS_PER_SOL, clusterApiUrl } from '@solana/web3.js';
 
 const WalletButton = () => {
   const [provider, setProvider] = useState<Window['phantom']['solana']>(null);
@@ -32,33 +32,22 @@ const WalletButton = () => {
 
       console.log('Fetching balance for address:', provider.publicKey.toString());
 
-      // Get the connection from the provider
-      const connection = await provider.request({
-        method: "getBalance",
-        params: {
-          commitment: "processed"
-        }
+      // Create a connection to Solana network
+      const connection = new Connection(clusterApiUrl('mainnet-beta'));
+      
+      // Get the balance
+      const balance = await connection.getBalance(provider.publicKey);
+      console.log('Raw balance (lamports):', balance);
+
+      // Convert lamports to SOL
+      const solBalance = balance / LAMPORTS_PER_SOL;
+      console.log('Balance in SOL:', solBalance);
+      
+      setBalance(solBalance);
+      toast({
+        title: "Balance Updated",
+        description: `Current balance: ${solBalance.toFixed(4)} SOL`,
       });
-
-      console.log('Raw balance response:', connection);
-
-      if (connection?.value !== undefined) {
-        const solBalance = connection.value / 1000000000; // Convert lamports to SOL
-        console.log('Setting balance to:', solBalance, 'SOL');
-        setBalance(solBalance);
-        toast({
-          title: "Balance Updated",
-          description: `Current balance: ${solBalance.toFixed(4)} SOL`,
-        });
-      } else {
-        console.log('No balance value in response');
-        setBalance(null);
-        toast({
-          variant: "destructive",
-          title: "Balance Error",
-          description: "Could not fetch balance",
-        });
-      }
     } catch (error) {
       console.error('Error fetching balance:', error);
       setBalance(null);

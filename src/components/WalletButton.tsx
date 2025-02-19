@@ -31,23 +31,34 @@ const WalletButton = () => {
         return;
       }
 
-      console.log('Fetching balance for address:', provider.publicKey.toString());
+      console.log('Fetching SOL balance for address:', provider.publicKey.toString());
 
-      // Using Phantom's request method to get balance
-      const balance = await provider.request({
+      // Using Phantom's request method to get Solana balance
+      const result = await provider.request({
         method: "getBalance",
-        params: { commitment: "processed" }
+        params: {
+          commitment: "processed",
+          tokenAddress: null // Explicitly set to null to get SOL balance
+        }
       });
 
-      console.log('Raw balance response:', balance);
+      console.log('Raw balance response:', result);
 
-      if (balance?.value !== undefined) {
-        const solBalance = balance.value / LAMPORTS_PER_SOL;
+      if (typeof result?.value === 'number') {
+        const solBalance = result.value / LAMPORTS_PER_SOL;
         console.log('Balance in SOL:', solBalance);
         setBalance(solBalance);
         toast({
           title: "Balance Updated",
           description: `Current balance: ${solBalance.toFixed(4)} SOL`,
+        });
+      } else {
+        console.log('Invalid balance response:', result);
+        setBalance(null);
+        toast({
+          variant: "destructive",
+          title: "Balance Error",
+          description: "Invalid balance response format",
         });
       }
     } catch (error) {
@@ -56,7 +67,7 @@ const WalletButton = () => {
       toast({
         variant: "destructive",
         title: "Balance Error",
-        description: "Failed to fetch wallet balance",
+        description: "Failed to fetch SOL balance",
       });
     }
   };

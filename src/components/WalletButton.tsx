@@ -23,7 +23,17 @@ const WalletButton = () => {
     };
 
     const provider = getProvider();
-    if (provider) setWallet(provider);
+    if (provider) {
+      setWallet(provider);
+      
+      // Check if already connected
+      if (provider.isConnected) {
+        const publicKey = provider.publicKey;
+        setConnected(true);
+        setPublicKey(publicKey.toString());
+        updateBalance(publicKey);
+      }
+    }
   }, []);
 
   const updateBalance = async (publicKey: any) => {
@@ -34,29 +44,37 @@ const WalletButton = () => {
         "confirmed"
       );
 
-      // Create a subscription to account changes
+      // Set up real-time account subscription
       const subscriptionId = connection.onAccountChange(
         publicKey,
-        (accountInfo: any) => {
-          const solBalance = accountInfo.lamports / 1000000000; // Convert lamports to SOL
-          console.log('Balance updated:', solBalance);
-          setBalance(solBalance);
+        async (accountInfo: any) => {
+          try {
+            // Get fresh balance after any change
+            const currentBalance = await connection.getBalance(publicKey);
+            const solBalance = currentBalance / 1000000000;
+            console.log('Real-time balance update:', solBalance);
+            setBalance(solBalance);
+          } catch (err) {
+            console.error('Error in balance subscription:', err);
+          }
         },
         "confirmed"
       );
 
       // Get initial balance
-      const balance = await connection.getBalance(publicKey);
-      const solBalance = balance / 1000000000; // Convert lamports to SOL
+      const initialBalance = await connection.getBalance(publicKey);
+      const solBalance = initialBalance / 1000000000;
       console.log('Initial balance:', solBalance);
       setBalance(solBalance);
 
       // Return cleanup function
       return () => {
+        console.log('Cleaning up balance subscription');
         connection.removeAccountChangeListener(subscriptionId);
       };
     } catch (error) {
       console.error('Error fetching balance:', error);
+      setBalance(null);
     }
   };
 
@@ -72,15 +90,24 @@ const WalletButton = () => {
         setConnected(true);
         setPublicKey(publicKey.toString());
         
-        // Start listening to balance changes
+        // Set up initial balance and subscription
         const cleanup = await updateBalance(publicKey);
         
         // Setup connection change listener
-        wallet.on('connect', (publicKey: any) => {
+        wallet.on('connect', async (publicKey: any) => {
           console.log('Connected to wallet:', publicKey.toString());
           setConnected(true);
           setPublicKey(publicKey.toString());
-          updateBalance(publicKey);
+          await updateBalance(publicKey);
+        });
+
+        // Setup account change listener from Phantom
+        wallet.on('accountChanged', async (newPublicKey: any) => {
+          console.log('Account changed:', newPublicKey?.toString());
+          if (newPublicKey) {
+            setPublicKey(newPublicKey.toString());
+            await updateBalance(newPublicKey);
+          }
         });
 
         // Setup disconnect listener

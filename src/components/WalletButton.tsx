@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
@@ -33,13 +32,12 @@ const WalletButton = () => {
 
       console.log('Fetching SOL balance using Phantom');
       
-      // Get balance using Phantom's request method
-      const response = await provider.request({
-        method: "getBalance",
+      const balance = await provider.request({
+        method: "wallet_getBalance",
         params: {},
       });
       
-      const solBalance = (response.result?.value || 0) / LAMPORTS_PER_SOL;
+      const solBalance = Number(balance) / LAMPORTS_PER_SOL;
       console.log('Balance in SOL:', solBalance);
       
       setBalance(solBalance);

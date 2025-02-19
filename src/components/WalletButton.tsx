@@ -33,11 +33,28 @@ const WalletButton = () => {
         "https://api.devnet.solana.com",
         "confirmed"
       );
+
+      // Create a subscription to account changes
+      const subscriptionId = connection.onAccountChange(
+        publicKey,
+        (accountInfo: any) => {
+          const solBalance = accountInfo.lamports / 1000000000; // Convert lamports to SOL
+          console.log('Balance updated:', solBalance);
+          setBalance(solBalance);
+        },
+        "confirmed"
+      );
+
+      // Get initial balance
       const balance = await connection.getBalance(publicKey);
-      console.log('Retrieved balance:', balance);
       const solBalance = balance / 1000000000; // Convert lamports to SOL
-      console.log('Balance in SOL:', solBalance);
+      console.log('Initial balance:', solBalance);
       setBalance(solBalance);
+
+      // Return cleanup function
+      return () => {
+        connection.removeAccountChangeListener(subscriptionId);
+      };
     } catch (error) {
       console.error('Error fetching balance:', error);
     }
@@ -48,14 +65,15 @@ const WalletButton = () => {
       if (wallet) {
         console.log('Attempting to connect wallet...');
         
-        // The recommended way to connect
         const resp = await wallet.connect();
         console.log('Wallet connected:', resp);
         
         const publicKey = resp.publicKey;
         setConnected(true);
         setPublicKey(publicKey.toString());
-        await updateBalance(publicKey);
+        
+        // Start listening to balance changes
+        const cleanup = await updateBalance(publicKey);
         
         // Setup connection change listener
         wallet.on('connect', (publicKey: any) => {
@@ -71,6 +89,7 @@ const WalletButton = () => {
           setConnected(false);
           setPublicKey(null);
           setBalance(null);
+          if (cleanup) cleanup();
           toast({
             variant: "destructive",
             title: "Wallet Disconnected",

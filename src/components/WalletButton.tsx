@@ -32,22 +32,32 @@ const WalletButton = () => {
 
       console.log('Fetching balance for address:', provider.publicKey.toString());
 
-      const response = await provider.request({
+      // Get the connection from the provider
+      const connection = await provider.request({
         method: "getBalance",
         params: {
           commitment: "processed"
         }
       });
 
-      console.log('Raw balance response:', response);
+      console.log('Raw balance response:', connection);
 
-      if (response?.value) {
-        const solBalance = response.value / 1000000000; // Convert lamports to SOL
+      if (connection?.value !== undefined) {
+        const solBalance = connection.value / 1000000000; // Convert lamports to SOL
         console.log('Setting balance to:', solBalance, 'SOL');
         setBalance(solBalance);
+        toast({
+          title: "Balance Updated",
+          description: `Current balance: ${solBalance.toFixed(4)} SOL`,
+        });
       } else {
         console.log('No balance value in response');
         setBalance(null);
+        toast({
+          variant: "destructive",
+          title: "Balance Error",
+          description: "Could not fetch balance",
+        });
       }
     } catch (error) {
       console.error('Error fetching balance:', error);
@@ -65,7 +75,7 @@ const WalletButton = () => {
     console.log('Account changed:', newPublicKey?.toString());
     setPublicKey(newPublicKey ? newPublicKey.toString() : null);
     updateBalance();
-  }, [provider]);
+  }, []);
 
   // Handle connection changes
   const handleConnect = useCallback((publicKey: any) => {
@@ -125,6 +135,7 @@ const WalletButton = () => {
 
       console.log('Attempting to connect...');
       await provider.connect();
+      updateBalance(); // Add explicit balance update after connection
       toast({
         title: "Wallet Connected",
         description: "Successfully connected to Phantom wallet",
@@ -163,14 +174,14 @@ const WalletButton = () => {
   return (
     <div className="flex flex-col items-end gap-2">
       {connected && publicKey && (
-        <p className="text-sm text-muted-foreground">
-          Address: {`${publicKey.slice(0, 4)}...${publicKey.slice(-4)}`}
-        </p>
-      )}
-      {connected && balance !== null && (
-        <p className="text-sm text-muted-foreground">
-          Balance: {balance.toFixed(2)} SOL
-        </p>
+        <>
+          <p className="text-sm text-muted-foreground">
+            Address: {`${publicKey.slice(0, 4)}...${publicKey.slice(-4)}`}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Balance: {balance !== null ? `${balance.toFixed(4)} SOL` : 'Loading...'}
+          </p>
+        </>
       )}
       <Button 
         onClick={connected ? disconnect : connect}

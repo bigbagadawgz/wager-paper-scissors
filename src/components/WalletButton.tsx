@@ -2,9 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
-import { Connection, PublicKey, LAMPORTS_PER_SOL, clusterApiUrl } from '@solana/web3.js';
-
-const SOLANA_NETWORK = 'mainnet-beta';
+import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 
 const WalletButton = () => {
   const [provider, setProvider] = useState<Window['phantom']['solana']>(null);
@@ -28,22 +26,22 @@ const WalletButton = () => {
   // Handle balance updates
   const updateBalance = async () => {
     try {
-      if (!publicKey) {
+      if (!provider || !publicKey) {
         console.log('No public key available for balance update');
         return;
       }
 
-      console.log('Fetching SOL balance for address:', publicKey);
+      console.log('Fetching SOL balance using Phantom');
       
-      // Create connection to Solana mainnet
-      const connection = new Connection(clusterApiUrl(SOLANA_NETWORK));
-      const pubKey = new PublicKey(publicKey);
+      // Get balance using Phantom's request method
+      const response = await provider.request({
+        method: "getBalance",
+        params: {},
+      });
       
-      // Get balance using getBalance method
-      const balance = await connection.getBalance(pubKey);
-      const solBalance = balance / LAMPORTS_PER_SOL;
-      
+      const solBalance = (response.result?.value || 0) / LAMPORTS_PER_SOL;
       console.log('Balance in SOL:', solBalance);
+      
       setBalance(solBalance);
       toast({
         title: "Balance Updated",

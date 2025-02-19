@@ -1,195 +1,62 @@
 
-import { useCallback, useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { toast } from '@/components/ui/use-toast';
+import { useEffect, useState } from 'react';
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { toast } from '@/components/ui/use-toast';
 
 const WalletButton = () => {
-  const [provider, setProvider] = useState<Window['phantom']['solana']>(null);
-  const [connected, setConnected] = useState(false);
-  const [publicKey, setPublicKey] = useState<string | null>(null);
+  const { connection } = useConnection();
+  const { publicKey } = useWallet();
   const [balance, setBalance] = useState<number | null>(null);
 
-  // Function to detect if Phantom is installed
-  const getProvider = () => {
-    if ('phantom' in window) {
-      const provider = window.phantom?.solana;
-
-      if (provider?.isPhantom) {
-        return provider;
-      }
-    }
-
-    window.open('https://phantom.app/', '_blank');
-  };
-
-  // Handle balance updates
-  const updateBalance = async () => {
-    try {
-      if (!provider || !publicKey) {
-        console.log('No public key available for balance update');
+  useEffect(() => {
+    const getBalance = async () => {
+      if (!publicKey) {
+        setBalance(null);
         return;
       }
 
-      console.log('Fetching SOL balance using Phantom');
-      
-      const response = await provider.request({
-        method: "getBalance",
-        params: {
-          commitment: 'confirmed'
-        },
-      });
-      
-      if (response && typeof response === 'number') {
-        const solBalance = response / LAMPORTS_PER_SOL;
-        console.log('Balance in SOL:', solBalance);
+      try {
+        const balance = await connection.getBalance(publicKey);
+        const solBalance = balance / LAMPORTS_PER_SOL;
         setBalance(solBalance);
         toast({
           title: "Balance Updated",
           description: `Current balance: ${solBalance.toFixed(4)} SOL`,
         });
-      } else {
-        throw new Error('Invalid balance response');
+      } catch (error) {
+        console.error('Error fetching balance:', error);
+        setBalance(null);
+        toast({
+          variant: "destructive",
+          title: "Balance Error",
+          description: "Failed to fetch SOL balance",
+        });
       }
-    } catch (error) {
-      console.error('Error fetching balance:', error);
-      setBalance(null);
-      toast({
-        variant: "destructive",
-        title: "Balance Error",
-        description: "Failed to fetch SOL balance",
-      });
-    }
-  };
+    };
 
-  // Handle account changes
-  const handleAccountChanged = useCallback((newPublicKey: any) => {
-    console.log('Account changed:', newPublicKey?.toString());
-    if (newPublicKey) {
-      const newPubKey = newPublicKey.toString();
-      setPublicKey(newPubKey);
-      updateBalance();
-    } else {
-      setPublicKey(null);
-      setBalance(null);
-    }
-  }, []);
+    getBalance();
+    
+    // Set up balance polling
+    const intervalId = setInterval(getBalance, 30000); // Poll every 30 seconds
 
-  // Handle connection changes
-  const handleConnect = useCallback(async (connectedPublicKey: any) => {
-    console.log('Connected:', connectedPublicKey.toString());
-    const pubKey = connectedPublicKey.toString();
-    setConnected(true);
-    setPublicKey(pubKey);
-    updateBalance();
-  }, []);
-
-  // Handle disconnection
-  const handleDisconnect = useCallback(() => {
-    console.log('Disconnected');
-    setConnected(false);
-    setPublicKey(null);
-    setBalance(null);
-    toast({
-      variant: "destructive",
-      title: "Wallet Disconnected",
-      description: "Phantom wallet has been disconnected",
-    });
-  }, []);
-
-  // Initialize provider
-  useEffect(() => {
-    const provider = getProvider();
-    if (provider) {
-      console.log('Setting up provider...');
-      setProvider(provider);
-
-      // Check if already connected
-      provider.connect({ onlyIfTrusted: true }).then((response) => {
-        if (response?.publicKey) {
-          const pubKey = response.publicKey.toString();
-          console.log('Wallet already connected:', pubKey);
-          setConnected(true);
-          setPublicKey(pubKey);
-          updateBalance();
-        }
-      }).catch(console.error);
-
-      // Add event listeners
-      provider.on("connect", handleConnect);
-      provider.on("disconnect", handleDisconnect);
-      provider.on("accountChanged", handleAccountChanged);
-
-      // Cleanup
-      return () => {
-        provider.removeAllListeners();
-      };
-    }
-  }, [handleConnect, handleDisconnect, handleAccountChanged]);
-
-  // Connect handler
-  const connect = useCallback(async () => {
-    try {
-      if (!provider) {
-        console.log('No provider available for connection');
-        return;
-      }
-
-      console.log('Attempting to connect...');
-      const { publicKey } = await provider.connect();
-      toast({
-        title: "Wallet Connected",
-        description: "Successfully connected to Phantom wallet",
-      });
-    } catch (error) {
-      console.error('Connection error:', error);
-      toast({
-        variant: "destructive",
-        title: "Connection Failed",
-        description: "Failed to connect to Phantom wallet",
-      });
-    }
-  }, [provider]);
-
-  // Disconnect handler
-  const disconnect = useCallback(async () => {
-    try {
-      if (!provider) return;
-      await provider.disconnect();
-    } catch (error) {
-      console.error('Disconnection error:', error);
-    }
-  }, [provider]);
-
-  if (!provider) {
-    return (
-      <Button 
-        variant="outline" 
-        onClick={() => window.open('https://phantom.app/', '_blank')}
-      >
-        Install Phantom Wallet
-      </Button>
-    );
-  }
+    return () => clearInterval(intervalId);
+  }, [publicKey, connection]);
 
   return (
     <div className="flex flex-col items-end gap-2">
-      {connected && publicKey && (
+      {publicKey && (
         <>
           <p className="text-sm text-muted-foreground">
-            Address: {`${publicKey.slice(0, 4)}...${publicKey.slice(-4)}`}
+            Address: {`${publicKey.toString().slice(0, 4)}...${publicKey.toString().slice(-4)}`}
           </p>
           <p className="text-sm text-muted-foreground">
             Balance: {balance !== null ? `${balance.toFixed(4)} SOL` : 'Loading...'}
           </p>
         </>
       )}
-      <Button 
-        onClick={connected ? disconnect : connect}
-        className="bg-primary hover:bg-primary/90 text-primary-foreground"
-      >
-        {connected ? 'Disconnect' : 'Connect Wallet'}
-      </Button>
+      <WalletMultiButton className="bg-primary hover:bg-primary/90 text-primary-foreground" />
     </div>
   );
 };

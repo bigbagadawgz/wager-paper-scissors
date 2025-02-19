@@ -33,7 +33,6 @@ const WalletButton = () => {
 
       console.log('Fetching SOL balance using Phantom');
       
-      const result = await provider.connect(); // Ensure connection is active
       const response = await provider.request({
         method: "getBalance",
         params: {

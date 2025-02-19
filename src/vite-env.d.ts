@@ -5,7 +5,7 @@ interface Window {
   phantom?: {
     solana?: {
       isPhantom?: boolean;
-      connect: () => Promise<{ publicKey: any }>;
+      connect: (params?: { onlyIfTrusted: boolean }) => Promise<{ publicKey: any }>;
       disconnect: () => Promise<void>;
       request: (args: any) => Promise<any>;
       on: (event: string, callback: any) => void;

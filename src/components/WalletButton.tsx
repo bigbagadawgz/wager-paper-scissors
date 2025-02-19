@@ -35,17 +35,14 @@ const WalletButton = () => {
 
       // Using Phantom's request method to get Solana balance
       const result = await provider.request({
-        method: "getBalance",
-        params: {
-          commitment: "processed",
-          tokenAddress: null // Explicitly set to null to get SOL balance
-        }
+        method: 'eth_getBalance',
+        params: [provider.publicKey.toString()]
       });
 
       console.log('Raw balance response:', result);
 
-      if (typeof result?.value === 'number') {
-        const solBalance = result.value / LAMPORTS_PER_SOL;
+      if (result) {
+        const solBalance = parseInt(result, 16) / LAMPORTS_PER_SOL;
         console.log('Balance in SOL:', solBalance);
         setBalance(solBalance);
         toast({

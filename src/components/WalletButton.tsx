@@ -10,68 +10,84 @@ const WalletButton = () => {
   const [balance, setBalance] = useState<number | null>(null);
 
   useEffect(() => {
-    const getProvider = () => {
-      if ('phantom' in window) {
-        const provider = (window as any).phantom?.solana;
-    
-        if (provider?.isPhantom) {
-          return provider;
-        }
-      }
-    
-      window.open('https://phantom.app/', '_blank');
-    };
+    if (typeof window !== 'undefined') {
+      const provider = window?.phantom?.solana;
 
-    const provider = getProvider();
-    if (provider) {
-      setWallet(provider);
-      
-      // Check if already connected
-      if (provider.isConnected) {
-        const publicKey = provider.publicKey;
-        setConnected(true);
-        setPublicKey(publicKey.toString());
-        updateBalance(publicKey);
+      if (provider?.isPhantom) {
+        setWallet(provider);
+
+        // Check if already connected
+        if (provider.isConnected) {
+          const publicKey = provider.publicKey;
+          setConnected(true);
+          setPublicKey(publicKey.toString());
+          updateBalance(provider);
+        }
+
+        // Listen for state changes
+        provider.on("connect", (publicKey: any) => {
+          setConnected(true);
+          setPublicKey(publicKey.toString());
+          updateBalance(provider);
+        });
+
+        provider.on("disconnect", () => {
+          setConnected(false);
+          setPublicKey(null);
+          setBalance(null);
+          toast({
+            variant: "destructive",
+            title: "Wallet Disconnected",
+            description: "Phantom wallet has been disconnected",
+          });
+        });
+
+        provider.on("accountChanged", (publicKey: any) => {
+          if (publicKey) {
+            console.log("Switched account to:", publicKey.toString());
+            setPublicKey(publicKey.toString());
+            updateBalance(provider);
+          }
+        });
       }
     }
+
+    return () => {
+      if (wallet) {
+        wallet.disconnect();
+      }
+    };
   }, []);
 
-  const updateBalance = async (publicKey: any) => {
+  const updateBalance = async (provider: any) => {
     try {
-      console.log('Fetching balance for public key:', publicKey.toString());
-      const connection = new (window as any).solanaWeb3.Connection(
-        "https://api.devnet.solana.com",
-        "confirmed"
-      );
+      if (!provider.publicKey) return;
 
-      // Set up real-time account subscription
-      const subscriptionId = connection.onAccountChange(
-        publicKey,
-        async (accountInfo: any) => {
-          try {
-            // Get fresh balance after any change
-            const currentBalance = await connection.getBalance(publicKey);
-            const solBalance = currentBalance / 1000000000;
-            console.log('Real-time balance update:', solBalance);
-            setBalance(solBalance);
-          } catch (err) {
-            console.error('Error in balance subscription:', err);
-          }
-        },
-        "confirmed"
-      );
+      // Get balance directly from Phantom provider
+      const balance = await provider.request({
+        method: "getBalance",
+        params: {
+          commitment: "processed"
+        }
+      });
 
-      // Get initial balance
-      const initialBalance = await connection.getBalance(publicKey);
-      const solBalance = initialBalance / 1000000000;
-      console.log('Initial balance:', solBalance);
+      const solBalance = balance.value / 1000000000; // Convert lamports to SOL
+      console.log('Current balance:', solBalance);
       setBalance(solBalance);
 
-      // Return cleanup function
-      return () => {
-        console.log('Cleaning up balance subscription');
-        connection.removeAccountChangeListener(subscriptionId);
-      };
+      // Set up real-time updates
+      provider.on("accountChanged", async () => {
+        const newBalance = await provider.request({
+          method: "getBalance",
+          params: {
+            commitment: "processed"
+          }
+        });
+        const newSolBalance = newBalance.value / 1000000000;
+        console.log('Balance updated:', newSolBalance);
+        setBalance(newSolBalance);
+      });
+
     } catch (error) {
       console.error('Error fetching balance:', error);
       setBalance(null);
@@ -81,48 +97,12 @@ const WalletButton = () => {
   const connect = useCallback(async () => {
     try {
       if (wallet) {
-        console.log('Attempting to connect wallet...');
+        const response = await wallet.connect();
+        console.log('Wallet connected:', response.publicKey.toString());
         
-        const resp = await wallet.connect();
-        console.log('Wallet connected:', resp);
-        
-        const publicKey = resp.publicKey;
         setConnected(true);
-        setPublicKey(publicKey.toString());
-        
-        // Set up initial balance and subscription
-        const cleanup = await updateBalance(publicKey);
-        
-        // Setup connection change listener
-        wallet.on('connect', async (publicKey: any) => {
-          console.log('Connected to wallet:', publicKey.toString());
-          setConnected(true);
-          setPublicKey(publicKey.toString());
-          await updateBalance(publicKey);
-        });
-
-        // Setup account change listener from Phantom
-        wallet.on('accountChanged', async (newPublicKey: any) => {
-          console.log('Account changed:', newPublicKey?.toString());
-          if (newPublicKey) {
-            setPublicKey(newPublicKey.toString());
-            await updateBalance(newPublicKey);
-          }
-        });
-
-        // Setup disconnect listener
-        wallet.on('disconnect', () => {
-          console.log('Wallet disconnected');
-          setConnected(false);
-          setPublicKey(null);
-          setBalance(null);
-          if (cleanup) cleanup();
-          toast({
-            variant: "destructive",
-            title: "Wallet Disconnected",
-            description: "Phantom wallet has been disconnected",
-          });
-        });
+        setPublicKey(response.publicKey.toString());
+        await updateBalance(wallet);
         
         toast({
           title: "Wallet Connected",

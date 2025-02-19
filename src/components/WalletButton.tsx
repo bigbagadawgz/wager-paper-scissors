@@ -1,7 +1,8 @@
+
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
-import { LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Connection, LAMPORTS_PER_SOL, PublicKey, clusterApiUrl } from '@solana/web3.js';
 
 const WalletButton = () => {
   const [provider, setProvider] = useState<Window['phantom']['solana']>(null);
@@ -25,39 +26,27 @@ const WalletButton = () => {
   // Handle balance updates
   const updateBalance = async () => {
     try {
-      if (!provider || !provider.publicKey) {
-        console.log('No provider or public key available for balance update');
+      if (!publicKey) {
+        console.log('No public key available for balance update');
         return;
       }
 
-      console.log('Fetching SOL balance for address:', provider.publicKey.toString());
+      console.log('Fetching SOL balance for address:', publicKey);
+      
+      // Create connection to Solana devnet
+      const connection = new Connection(clusterApiUrl('devnet'));
+      
+      // Get balance directly from Solana network
+      const balance = await connection.getBalance(new PublicKey(publicKey));
+      console.log('Raw balance response:', balance);
 
-      const response = await provider.request({
-        method: "connection.getBalance",
-        params: {
-          publicKey: provider.publicKey.toString()
-        }
+      const solBalance = balance / LAMPORTS_PER_SOL;
+      console.log('Balance in SOL:', solBalance);
+      setBalance(solBalance);
+      toast({
+        title: "Balance Updated",
+        description: `Current balance: ${solBalance.toFixed(4)} SOL`,
       });
-
-      console.log('Raw balance response:', response);
-
-      if (typeof response === 'number') {
-        const solBalance = response / LAMPORTS_PER_SOL;
-        console.log('Balance in SOL:', solBalance);
-        setBalance(solBalance);
-        toast({
-          title: "Balance Updated",
-          description: `Current balance: ${solBalance.toFixed(4)} SOL`,
-        });
-      } else {
-        console.log('Invalid balance response:', response);
-        setBalance(null);
-        toast({
-          variant: "destructive",
-          title: "Balance Error",
-          description: "Invalid balance response format",
-        });
-      }
     } catch (error) {
       console.error('Error fetching balance:', error);
       setBalance(null);

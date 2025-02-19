@@ -4,14 +4,14 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 
 const WalletButton = () => {
-  const [wallet, setWallet] = useState<any>(null);
+  const [wallet, setWallet] = useState<Window['phantom']['solana']>(null);
   const [connected, setConnected] = useState(false);
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const provider = window?.phantom?.solana;
+      const provider = window.phantom?.solana;
 
       if (provider?.isPhantom) {
         setWallet(provider);
@@ -59,9 +59,9 @@ const WalletButton = () => {
     };
   }, []);
 
-  const updateBalance = async (provider: any) => {
+  const updateBalance = async (provider: Window['phantom']['solana']) => {
     try {
-      if (!provider.publicKey) return;
+      if (!provider?.publicKey) return;
 
       // Get balance directly from Phantom provider
       const balance = await provider.request({

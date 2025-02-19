@@ -13,8 +13,8 @@ interface Props {
 }
 
 export const WalletContextProvider: FC<Props> = ({ children }) => {
-  // You can also provide a custom RPC endpoint
-  const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
+  // Use mainnet-beta for real balances
+  const endpoint = useMemo(() => clusterApiUrl('mainnet-beta'), []);
 
   const wallets = useMemo(
     () => [

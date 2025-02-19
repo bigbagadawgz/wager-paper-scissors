@@ -33,19 +33,25 @@ const WalletButton = () => {
 
       console.log('Fetching SOL balance using Phantom');
       
+      const result = await provider.connect(); // Ensure connection is active
       const response = await provider.request({
         method: "getBalance",
-        params: {},
+        params: {
+          commitment: 'confirmed'
+        },
       });
       
-      const solBalance = (response.result?.value || 0) / LAMPORTS_PER_SOL;
-      console.log('Balance in SOL:', solBalance);
-      
-      setBalance(solBalance);
-      toast({
-        title: "Balance Updated",
-        description: `Current balance: ${solBalance.toFixed(4)} SOL`,
-      });
+      if (response && typeof response === 'number') {
+        const solBalance = response / LAMPORTS_PER_SOL;
+        console.log('Balance in SOL:', solBalance);
+        setBalance(solBalance);
+        toast({
+          title: "Balance Updated",
+          description: `Current balance: ${solBalance.toFixed(4)} SOL`,
+        });
+      } else {
+        throw new Error('Invalid balance response');
+      }
     } catch (error) {
       console.error('Error fetching balance:', error);
       setBalance(null);
@@ -63,8 +69,7 @@ const WalletButton = () => {
     if (newPublicKey) {
       const newPubKey = newPublicKey.toString();
       setPublicKey(newPubKey);
-      // Trigger balance update after public key is set
-      setTimeout(() => updateBalance(), 100);
+      updateBalance();
     } else {
       setPublicKey(null);
       setBalance(null);
@@ -77,8 +82,7 @@ const WalletButton = () => {
     const pubKey = connectedPublicKey.toString();
     setConnected(true);
     setPublicKey(pubKey);
-    // Trigger balance update after connection
-    setTimeout(() => updateBalance(), 100);
+    updateBalance();
   }, []);
 
   // Handle disconnection
@@ -102,14 +106,15 @@ const WalletButton = () => {
       setProvider(provider);
 
       // Check if already connected
-      if (provider.isConnected && provider.publicKey) {
-        const pubKey = provider.publicKey.toString();
-        console.log('Wallet already connected:', pubKey);
-        setConnected(true);
-        setPublicKey(pubKey);
-        // Initial balance check
-        setTimeout(() => updateBalance(), 100);
-      }
+      provider.connect({ onlyIfTrusted: true }).then((response) => {
+        if (response?.publicKey) {
+          const pubKey = response.publicKey.toString();
+          console.log('Wallet already connected:', pubKey);
+          setConnected(true);
+          setPublicKey(pubKey);
+          updateBalance();
+        }
+      }).catch(console.error);
 
       // Add event listeners
       provider.on("connect", handleConnect);

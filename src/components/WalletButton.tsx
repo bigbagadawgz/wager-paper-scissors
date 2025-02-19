@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
@@ -33,19 +32,17 @@ const WalletButton = () => {
 
       console.log('Fetching SOL balance for address:', provider.publicKey.toString());
 
-      // Using Phantom's request method to get Solana balance
-      const result = await provider.request({
-        method: "getBalance",
+      const response = await provider.request({
+        method: "connection.getBalance",
         params: {
-          commitment: "processed",
-          tokenAddress: null // Explicitly set to null to get SOL balance
+          publicKey: provider.publicKey.toString()
         }
       });
 
-      console.log('Raw balance response:', result);
+      console.log('Raw balance response:', response);
 
-      if (typeof result?.value === 'number') {
-        const solBalance = result.value / LAMPORTS_PER_SOL;
+      if (typeof response === 'number') {
+        const solBalance = response / LAMPORTS_PER_SOL;
         console.log('Balance in SOL:', solBalance);
         setBalance(solBalance);
         toast({
@@ -53,7 +50,7 @@ const WalletButton = () => {
           description: `Current balance: ${solBalance.toFixed(4)} SOL`,
         });
       } else {
-        console.log('Invalid balance response:', result);
+        console.log('Invalid balance response:', response);
         setBalance(null);
         toast({
           variant: "destructive",

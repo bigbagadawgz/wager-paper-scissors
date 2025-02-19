@@ -1,7 +1,8 @@
+
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
-import { Connection, LAMPORTS_PER_SOL, clusterApiUrl } from '@solana/web3.js';
+import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 
 const WalletButton = () => {
   const [provider, setProvider] = useState<Window['phantom']['solana']>(null);
@@ -32,22 +33,23 @@ const WalletButton = () => {
 
       console.log('Fetching balance for address:', provider.publicKey.toString());
 
-      // Create a connection to Solana network
-      const connection = new Connection(clusterApiUrl('mainnet-beta'));
-      
-      // Get the balance
-      const balance = await connection.getBalance(provider.publicKey);
-      console.log('Raw balance (lamports):', balance);
-
-      // Convert lamports to SOL
-      const solBalance = balance / LAMPORTS_PER_SOL;
-      console.log('Balance in SOL:', solBalance);
-      
-      setBalance(solBalance);
-      toast({
-        title: "Balance Updated",
-        description: `Current balance: ${solBalance.toFixed(4)} SOL`,
+      // Using Phantom's request method to get balance
+      const balance = await provider.request({
+        method: "getBalance",
+        params: { commitment: "processed" }
       });
+
+      console.log('Raw balance response:', balance);
+
+      if (balance?.value !== undefined) {
+        const solBalance = balance.value / LAMPORTS_PER_SOL;
+        console.log('Balance in SOL:', solBalance);
+        setBalance(solBalance);
+        toast({
+          title: "Balance Updated",
+          description: `Current balance: ${solBalance.toFixed(4)} SOL`,
+        });
+      }
     } catch (error) {
       console.error('Error fetching balance:', error);
       setBalance(null);
